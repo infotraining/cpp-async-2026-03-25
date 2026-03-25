@@ -1,5 +1,6 @@
 ﻿#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <deque>
 #include <exec/single_thread_context.hpp>
 #include <exec/static_thread_pool.hpp>
 #include <iostream>
