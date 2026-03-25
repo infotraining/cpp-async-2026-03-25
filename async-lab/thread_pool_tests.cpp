@@ -59,7 +59,7 @@ public:
     }
 
     template <typename F>   
-    decltype(auto) submit(F&& task)
+    auto submit(F&& task) -> std::future<std::invoke_result_t<F>>
     {
         using Return_t = decltype(task());
         using PackagedTask_t = std::packaged_task<Return_t()>;
@@ -97,6 +97,44 @@ int calculate(int x)
     return x * x;
 }
 
+template <typename TContainer>
+decltype(auto) get_nth(TContainer& cont, size_t index)
+{
+    return cont[index];
+}
+
+
+template <typename F>
+decltype(auto) call(F f)
+{
+    return f();
+}
+
+TEST_CASE("auto vs. decltype(auto)")
+{
+    int x = 10;
+    const int cx = 10;
+    int& ref_x = x;
+    const int& cref_x = x;
+
+    auto ax1 = x;       // int 
+    auto ax2 = cx;      // int
+    decltype(auto) dax2 = cx;  // const int
+    auto ax3 = ref_x;   // int
+    decltype(auto) dax3 = ref_x; // int&
+    auto ax4 = cref_x;  // int
+    decltype(auto) adx4 = cref_x; // const int&
+
+    std::vector<std::string> words{"one"};
+
+    get_nth(words, 0) = "jeden";
+    REQUIRE(words[0] == "jeden");
+
+    std::vector<bool> flags{0, 1, 1, 0};
+    get_nth(flags, 0) = 1;
+}
+
+
 TEST_CASE("Thread pool")
 {
     ThreadPool thd_pool(12);
@@ -110,7 +148,7 @@ TEST_CASE("Thread pool")
     std::vector<std::future<int>> f_squares;
 
     for(int i = 4; i < 30; ++i)
-        f_squares.push_back(thd_pool.submit([i] { return calculate(i); }));
+        f_squares.push_back(thd_pool.submit([i]() { return calculate(i); }));
 
     for(auto& f : f_squares)
     {
