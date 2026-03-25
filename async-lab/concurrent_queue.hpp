@@ -41,12 +41,26 @@ public:
 		return true;
     }
 
+    bool push(T&& value)
+    {
+		if (is_closed_)
+			return false;
+
+        {
+            std::lock_guard lk{mtx_q_};
+            q_.push(std::move(value));
+        }
+        cv_q_not_empty_.notify_one();
+
+		return true;
+    }
+
     [[nodiscard]] std::optional<T> pop()
     {
         std::unique_lock lk{mtx_q_};
 
-		auto open_and_not_empty = [this] { return !q_.empty() || is_closed_; };
-        cv_q_not_empty_.wait(lk, open_and_not_empty);
+		auto open_or_not_empty = [this] { return !q_.empty() || is_closed_; };
+        cv_q_not_empty_.wait(lk, open_or_not_empty);
 
 		if (q_.empty() && is_closed_)
 			return std::nullopt;
