@@ -1,5 +1,10 @@
 # Programowanie asynchroniczne w C++ - Szkolenie
 
+## Dokumentacja
+
+* https://infotraining.github.io/docs-cpp-async
+* https://infotraining.github.io/docs-cpp-async/slides
+
 ## Konfiguracja środowiska
 
 Proszę wybrać jedną z poniższych opcji:
