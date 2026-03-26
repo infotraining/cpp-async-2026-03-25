@@ -137,7 +137,7 @@ namespace AsyncLab
                     std::cout << "~Promise()" << std::endl;
                 }
 
-                TaskResumer get_return_object()
+                TaskResumer get_return_object()     
                 {
                     return TaskResumer(std::coroutine_handle<Promise>::from_promise(*this));
                 }
@@ -254,4 +254,41 @@ TEST_CASE("Simple coroutine")
     } while (coro_1.resume() || coro_2.resume());
 
     std::cout << "Value from coro_2: " << coro_2.result() << std::endl;
+}
+
+struct CustomAwaitable
+{
+    bool await_ready() noexcept
+    {
+        std::cout << "CustomAwaitable::await_ready()" << std::endl;
+
+        return true;
+    }
+
+    void await_suspend(std::coroutine_handle<> awaiting_coro) noexcept
+    {
+        std::cout << "CustomAwaitable::await_supend() - " << awaiting_coro.address() << std::endl;
+    }
+
+    void await_resume() noexcept
+    {
+        std::cout << "CustomAwaitable::await_resume" << std::endl;
+    }
+};
+
+AsyncLab::TaskResumer<void> coro_with_awaitable()
+{
+    std::cout << "Start..." << std::endl;
+    co_await CustomAwaitable{};
+}
+
+TEST_CASE("Awaitables & Awaiters")
+{
+    using namespace AsyncLab;
+
+    TaskResumer<void> task = coro_with_awaitable();
+
+    do
+    {
+    } while(task.resume());
 }
