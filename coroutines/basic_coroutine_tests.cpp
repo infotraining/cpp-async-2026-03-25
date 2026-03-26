@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "thread_pool.hpp"
+
 namespace AsyncLab
 {
     namespace ver_1
@@ -381,10 +383,13 @@ struct DetachedTask
     std::coroutine_handle<promise_type> handle_;
 };
 
-auto resume_on_new_thread()
+auto resume_on_new_thread(ThreadPool& tp)
 {
     struct Awaitable
     {
+        Awaitable(ThreadPool& tp) : _tp(tp) {}
+
+        ThreadPool& _tp;
         bool await_ready() noexcept
         {
             return false; // always suspend
@@ -392,10 +397,10 @@ auto resume_on_new_thread()
 
         void await_suspend(std::coroutine_handle<> awaiting_coro) noexcept
         {
-            std::thread([awaiting_coro]() {
+            _tp.submit([awaiting_coro]() {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 awaiting_coro.resume();
-            }).detach();
+            });
         }
 
         std::thread::id await_resume() noexcept
@@ -404,21 +409,22 @@ auto resume_on_new_thread()
         }
     };
 
-    return Awaitable{};
+    return Awaitable{tp};
 }
 
-DetachedTask calculate()
+DetachedTask calculate(ThreadPool& tp)
 {
     std::cout << "Start on THD#" << std::this_thread::get_id() << "..." << "\n";
 
-    std::thread::id thd_id = co_await resume_on_new_thread();
+    std::thread::id thd_id = co_await resume_on_new_thread(tp);
 
     std::cout << "Resumed on THD#" << thd_id << "..." << "\n";
 }
 
 TEST_CASE("Resuming on new thread")
 {
-    DetachedTask task = calculate();
+    ThreadPool tp(2);
+    DetachedTask task = calculate(tp);
 
     std::cout << "Main thread is doing some work..." << "THD#" << std::this_thread::get_id()
               << std::endl;
