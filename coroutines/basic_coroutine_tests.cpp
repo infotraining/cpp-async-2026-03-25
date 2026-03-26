@@ -8,6 +8,7 @@
 #include <numeric>
 #include <set>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -313,12 +314,10 @@ auto immediate_throw()
         {
             throw std::runtime_error("Error#13");
         }
-
     };
 
     return ThrowingAwaitable{};
 }
-
 
 AsyncLab::TaskResumer<void> coro_with_awaitable()
 {
@@ -344,4 +343,85 @@ TEST_CASE("Awaitables & Awaiters")
     do
     {
     } while (task.resume());
+}
+
+struct DetachedTask
+{
+    struct promise_type
+    {
+        DetachedTask get_return_object()
+        {
+            return DetachedTask(std::coroutine_handle<promise_type>::from_promise(*this));
+        }
+
+        std::suspend_never initial_suspend() // eager coroutine on start
+        {
+            return {};
+        }
+
+        std::suspend_never final_suspend() noexcept
+        {
+            return {};
+        }
+
+        void unhandled_exception()
+        {
+            std::terminate();
+        }
+
+        void return_void()
+        {
+        }
+    };
+
+    DetachedTask(std::coroutine_handle<promise_type> handle)
+        : handle_(handle)
+    { }
+
+    std::coroutine_handle<promise_type> handle_;
+};
+
+auto resume_on_new_thread()
+{
+    struct Awaitable
+    {
+        bool await_ready() noexcept
+        {
+            return false; // always suspend
+        }
+
+        void await_suspend(std::coroutine_handle<> awaiting_coro) noexcept
+        {
+            std::thread([awaiting_coro]() {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                awaiting_coro.resume();
+            }).detach();
+        }
+
+        std::thread::id await_resume() noexcept
+        {
+            return std::this_thread::get_id();
+        }
+    };
+
+    return Awaitable{};
+}
+
+DetachedTask calculate()
+{
+    std::cout << "Start on THD#" << std::this_thread::get_id() << "..." << "\n";
+
+    std::thread::id thd_id = co_await resume_on_new_thread();
+
+    std::cout << "Resumed on THD#" << thd_id << "..." << "\n";
+}
+
+TEST_CASE("Resuming on new thread")
+{
+    DetachedTask task = calculate();
+
+    std::cout << "Main thread is doing some work..." << "THD#" << std::this_thread::get_id()
+              << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::cout << "Main thread has finished..." << std::endl;
 }
