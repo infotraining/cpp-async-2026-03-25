@@ -101,7 +101,7 @@ namespace AsyncLab
 
             void return_value(T value)
             {
-                std::cout << "+ Completing coroutine with co_return with value " 
+                std::cout << "+ Completing coroutine with co_return with value "
                           << value << "..." << std::endl;
                 result_ = std::move(value);
             }
@@ -137,7 +137,7 @@ namespace AsyncLab
                     std::cout << "~Promise()" << std::endl;
                 }
 
-                TaskResumer get_return_object()     
+                TaskResumer get_return_object()
                 {
                     return TaskResumer(std::coroutine_handle<Promise>::from_promise(*this));
                 }
@@ -190,7 +190,7 @@ namespace AsyncLab
             T result()
             {
 
-                if constexpr(!std::is_void_v<T>)
+                if constexpr (!std::is_void_v<T>)
                     return handle_.promise().result();
                 else
                     return;
@@ -276,10 +276,63 @@ struct CustomAwaitable
     }
 };
 
+CustomAwaitable custom_awaitable()
+{
+    return CustomAwaitable{};
+}
+
+auto immediate_value(int value)
+{
+    struct ImmediateAwaitable
+    {
+        bool await_ready() noexcept
+        {
+            return true;
+        }
+
+        void await_suspend(std::coroutine_handle<> awaiting_coro) noexcept
+        {
+        }
+
+        int await_resume() noexcept
+        {
+            return value;
+        }
+
+        int value;
+    };
+
+    return ImmediateAwaitable{value};
+}
+
+auto immediate_throw()
+{
+    struct ThrowingAwaitable : std::suspend_never
+    {
+        void await_resume()
+        {
+            throw std::runtime_error("Error#13");
+        }
+
+    };
+
+    return ThrowingAwaitable{};
+}
+
+
 AsyncLab::TaskResumer<void> coro_with_awaitable()
 {
     std::cout << "Start..." << std::endl;
+
     co_await CustomAwaitable{};
+
+    std::cout << "Coroutine has been resumed..." << std::endl;
+
+    // co_await immediate_throw();
+
+    int result = co_await immediate_value(42);
+
+    std::cout << "co_await returned " << result << std::endl;
 }
 
 TEST_CASE("Awaitables & Awaiters")
@@ -290,5 +343,5 @@ TEST_CASE("Awaitables & Awaiters")
 
     do
     {
-    } while(task.resume());
+    } while (task.resume());
 }
