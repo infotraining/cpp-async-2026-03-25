@@ -75,7 +75,7 @@ TEST_CASE("Monte Carlo PI", "[stdexec][pi][slow]")
         auto start = chrono::high_resolution_clock::now();
 
         sender auto sender_pi = 
-            just(std::vector<uintmax_t>(threads_count))
+            starts_on(cpu_scheduler, just(std::vector<uintmax_t>(threads_count)))
             | bulk(std::execution::par, threads_count, [iterations_per_thread = no_of_iterations / threads_count](size_t i, std::vector<uintmax_t>& partial_hits) {
                 partial_hits[i] = calculate_hits(iterations_per_thread);
             })

@@ -151,7 +151,9 @@ TEST_CASE("Mandelbrot set", "[stdexec][mandelbrot][slow]")
             }
         };
 
-        stdexec::sender auto work = stdexec::schedule(cpu_scheduler) | stdexec::bulk(height, calculate_row);
+        stdexec::sender auto work = 
+            stdexec::schedule(cpu_scheduler) 
+            | stdexec::bulk(height, calculate_row);
         stdexec::sync_wait(std::move(work));
 
         auto end = chrono::high_resolution_clock::now();

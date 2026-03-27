@@ -3,6 +3,11 @@
 ## Linki
 
 * https://lewissbaker.github.io/2020/05/11/understanding_symmetric_transfer
+* https://github.com/cppalliance/capy
+* https://github.com/nvidia/stdexec
+* https://github.com/intel/cpp-baremetal-senders-and-receivers
+* https://github.com/bemanproject/execution
+* https://github.com/bemanproject/net
 
 ## Ankieta
 
