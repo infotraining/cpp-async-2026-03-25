@@ -754,7 +754,6 @@ namespace AsyncLab
                         io_callbacks_.erase(it);
                         cb(cqe->res);
                     }
-                    io_uring_cqe_seen(&ring_, cqe);
                 }
             }
         };

@@ -76,3 +76,58 @@ Jeśli uczestnicy szkolenia korzystają w pracy z Docker'a, to należy zainstalo
   * Dev Containers ([wymagania](https://code.visualstudio.com/docs/devcontainers/containers#_system-requirements))
     * po instalacji wtyczki - należy otworzyć w VS Code folder zawierający sklonowane repozytorium i
       z palety poleceń (Ctrl+Shift+P) wybrać opcję **Dev Containers: Rebuild and Reopen in Container**
+
+
+@startuml
+skinparam state {
+  BackgroundColor LightCyan
+  BorderColor DarkSlateGray
+}
+hide empty description
+title C++20 Coroutine & Awaiter Interface Lifecycle
+
+[*] --> Invocation : Caller calls function
+
+Invocation --> PromiseCreated : Frame allocated, args copied
+PromiseCreated --> InitialSuspend : promise.get_return_object()
+
+InitialSuspend --> Suspended : promise.initial_suspend()\nreturns suspend_always
+InitialSuspend --> Running : returns suspend_never
+
+Suspended --> Running : handle.resume()
+
+state "Evaluating co_await (or co_yield)" as AwaiterFlow {
+  state "awaiter.await_ready()" as AwaitReady
+  state "State Saved" as StateSaved : Instruction pointer & registers saved
+  state "awaiter.await_suspend(handle)" as AwaitSuspend
+  state "awaiter.await_resume()" as AwaitResume
+  
+  [*] --> AwaitReady : Evaluate awaiter
+  
+  AwaitReady --> AwaitResume : returns true\n(value already available, skip suspend)
+  AwaitReady --> StateSaved : returns false
+  
+  StateSaved --> AwaitSuspend 
+  
+  AwaitSuspend --> AwaitResume : returns false\n(resume immediately)
+  AwaitSuspend --> SuspendedOuter : returns void or true\n(control returns to caller/resumer)
+  AwaitSuspend --> SymmetricTransfer : returns coroutine_handle\n(resumes another coroutine)
+  
+  SuspendedOuter --> AwaitResume : externally resumed\nvia handle.resume()
+  
+  AwaitResume --> [*] : yields result to\nco_await expression
+}
+
+Running --> AwaiterFlow : hits co_await <expr>
+AwaiterFlow --> Running : co_await finishes
+
+Running --> FinalSuspend : co_return / unhandled exception
+
+FinalSuspend --> SuspendedAtEnd : promise.final_suspend()\nreturns suspend_always
+FinalSuspend --> [*] : returns suspend_never
+
+SuspendedAtEnd --> [*] : handle.destroy()
+
+' Invisible lines for layout formatting
+SymmetricTransfer -[hidden]-> FinalSuspend
+@enduml
