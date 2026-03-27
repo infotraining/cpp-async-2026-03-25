@@ -1,5 +1,9 @@
 # Programowanie asynchroniczne w C++ - Szkolenie
 
+## Ankieta
+
+* https://forms.gle/KRBLb2kQm9vcCJyC9
+
 ## Dokumentacja
 
 * https://infotraining.github.io/docs-cpp-async
