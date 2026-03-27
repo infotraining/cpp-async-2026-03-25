@@ -1,5 +1,9 @@
 # Programowanie asynchroniczne w C++ - Szkolenie
 
+## Linki
+
+* https://lewissbaker.github.io/2020/05/11/understanding_symmetric_transfer
+
 ## Ankieta
 
 * https://forms.gle/KRBLb2kQm9vcCJyC9
