@@ -1,19 +1,16 @@
-﻿#include <algorithm>
+﻿#include "concurrent_queue.hpp"
+
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
-#include <condition_variable>
 #include <iostream>
 #include <list>
 #include <map>
 #include <numeric>
-#include <optional>
-#include <queue>
 #include <set>
 #include <string>
 #include <vector>
-#include <chrono>
 
-#include "concurrent_queue.hpp"
-
+using namespace AsyncLab;
 using namespace std::literals;
 
 TEST_CASE("ConcurrentQueue - basic operations")
@@ -53,7 +50,7 @@ TEST_CASE("ConcurrentQueue - basic operations")
         REQUIRE(errc == QueueErrc::Empty);
     }
 
-	SECTION("empty")
+    SECTION("empty")
     {
         REQUIRE(queue.empty());
 
@@ -65,7 +62,7 @@ TEST_CASE("ConcurrentQueue - basic operations")
         REQUIRE(queue.empty());
     }
 
-	SECTION("close")
+    SECTION("close")
     {
         SECTION("push after close")
         {
@@ -128,6 +125,36 @@ TEST_CASE("ConcurrentQueue - basic operations")
 			t1.join();
 			t2.join();
 		}
+    }
+
+    SECTION("push & pop - multithreading")
+    {
+        const int num_items = 100;
+
+        int items_pushed = 0;
+        int items_popped = 0;
+
+        std::thread producer([&queue, &items_pushed, num_items] {
+			for (int i = 0; i < num_items; ++i) {
+				queue.push(i);
+				++items_pushed;
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			} });
+
+        std::thread consumer([&queue, &items_popped, num_items] {
+			for (int i = 0; i < num_items; ++i) {
+				std::optional<int> value = queue.pop();
+				REQUIRE(value.has_value());
+				++items_popped;
+			} });
+
+        producer.join();
+
+        queue.close();
+
+        consumer.join();
+
+        REQUIRE(items_pushed == num_items);
     }
 }
 

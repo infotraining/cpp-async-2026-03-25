@@ -1,107 +1,91 @@
-#include <algorithm>
-#include <catch2/catch_test_macros.hpp>
-#include <condition_variable>
-#include <iostream>
-#include <list>
-#include <map>
-#include <numeric>
-#include <optional>
-#include <queue>
-#include <set>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <functional>
-#include <syncstream>
-#include <future>
-
-#include "thread_pool.hpp"
 #include "concurrent_queue.hpp"
+#include "thread_pool.hpp"
+#include "task.hpp"
+#include "sync_wait.hpp"
+
+#include <catch2/catch_test_macros.hpp>
+#include <iostream>
 
 using namespace std::literals;
 
-std::osyncstream synced_cout()
-{
-    return std::osyncstream(std::cout);
-}
+using namespace AsyncLab;
 
-void background_work(const int id, const std::string text, 
-                     const std::chrono::milliseconds delay) 
+TEST_CASE("ThreadPool")
 {
-	synced_cout() << "Thread#" << id << " started..." << std::endl;
-	synced_cout() << "THD#" << std::this_thread::get_id() << " is doing some work..." << std::endl;
-
-    for(const auto& letter : text)
+    SECTION("submit and shutdown")
     {
-        synced_cout() << "Thread#" << id << " - " << letter << std::endl;
-        std::this_thread::sleep_for(delay);
+        std::atomic<int> counter{0};
+        {
+            ThreadPool pool{4};
+
+            auto submit_tasks = [&pool, &counter](int num_tasks) {
+                 for (int i = 0; i < num_tasks; ++i)
+                 {
+                     pool.submit([&counter] {
+                         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                         ++counter;
+                     });
+                 }
+            };
+
+            {
+                std::vector<std::jthread> submitters;
+
+                for (int i = 0; i < 10; ++i)
+                {
+                    submitters.emplace_back(submit_tasks, 25);
+                }
+            }
+        }
+
+        REQUIRE(counter == 250);
     }
-    synced_cout() << "Thread#" << id << " has finished..." << std::endl;
-}
 
-
-
-int calculate(int x)
-{
-    synced_cout() << "Starting calulate for " << x << "\n";
-    std::this_thread::sleep_for(x * 25ms);
-    return x * x;
-}
-
-template <typename TContainer>
-decltype(auto) get_nth(TContainer& cont, size_t index)
-{
-    return cont[index];
-}
-
-
-template <typename F>
-decltype(auto) call(F f)
-{
-    return f();
-}
-
-TEST_CASE("auto vs. decltype(auto)")
-{
-    int x = 10;
-    const int cx = 10;
-    int& ref_x = x;
-    const int& cref_x = x;
-
-    auto ax1 = x;       // int 
-    auto ax2 = cx;      // int
-    decltype(auto) dax2 = cx;  // const int
-    auto ax3 = ref_x;   // int
-    decltype(auto) dax3 = ref_x; // int&
-    auto ax4 = cref_x;  // int
-    decltype(auto) adx4 = cref_x; // const int&
-
-    std::vector<std::string> words{"one"};
-
-    get_nth(words, 0) = "jeden";
-    REQUIRE(words[0] == "jeden");
-
-    std::vector<bool> flags{0, 1, 1, 0};
-    get_nth(flags, 0) = 1;
-}
-
-TEST_CASE("Thread pool")
-{
-    ThreadPool thd_pool(12);
-
-    thd_pool.submit([] { background_work(1, "Hello"s, 10ms); });
-    thd_pool.submit([] { background_work(2, "Thread"s, 15ms); });
-    thd_pool.submit([] { background_work(3, "Concurrent"s, 50ms); });
-    
-    std::future<int> f_square = thd_pool.submit([] { return calculate(5); });
-
-    std::vector<std::future<int>> f_squares;
-
-    for(int i = 4; i < 30; ++i)
-        f_squares.push_back(thd_pool.submit([i]() { return calculate(i); }));
-
-    for(auto& f : f_squares)
+    SECTION("submit returns future")
     {
-        synced_cout() << "Result: " << f.get() << "\n";
-    }    
+        ThreadPool pool{2};
+
+        auto future_result = pool.submit([] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            return 42;
+        });
+
+        REQUIRE(future_result.get() == 42);
+    }
+}
+
+TEST_CASE("ThreadPool - submit_task")
+{
+    using namespace AsyncLab;
+
+    SECTION("submit_task executes function in pool and returns awaitable")
+    {
+        ThreadPool thd_pool{4};
+
+        auto calculate = []() {
+            std::cout << "Calculation started on thread " << std::this_thread::get_id() << std::endl;
+            
+            return 42;
+        };
+
+        auto task = [=, &thd_pool]() -> Task<std::string> {
+            std::cout << "Task started on thread " << std::this_thread::get_id() << std::endl;
+
+            int result_1 = co_await thd_pool.run_async(calculate);
+            
+            std::cout << "Task received result " << result_1 << " on thread " << std::this_thread::get_id() << std::endl;
+
+            int result_2 = co_await thd_pool.run_async([=] {
+                std::cout << "Nested calculation started on thread " << std::this_thread::get_id() << std::endl;
+                return result_1 * 2;
+            });
+
+            std::cout << "Task received next result " << result_2 << " on thread " << std::this_thread::get_id() << std::endl;
+
+            co_return std::to_string(result_1) + " and " + std::to_string(result_2);
+        };
+
+        std::string result = AsyncLab::sync_wait(task());
+        REQUIRE(result == "42 and 84");
+    }
 }

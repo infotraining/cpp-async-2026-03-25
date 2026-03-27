@@ -2,61 +2,129 @@
 #define THREAD_POOL_HPP
 
 #include "concurrent_queue.hpp"
-#include <vector>
+#include "task.hpp"
+
 #include <thread>
-#include <future>
+#include <vector>
+#include <optional>
+#include <cassert>
+#include <utility>
 #include <functional>
+#include <future>
 
-class ThreadPool
-{   
-public:
-    using Task = std::move_only_function<void()>;
-
-    ThreadPool(size_t no_of_threads = std::max(1u, std::thread::hardware_concurrency()))
+namespace AsyncLab
+{
+    class ThreadPool
     {
-        thds_.reserve(no_of_threads);
-        for(size_t i = 0; i < no_of_threads; ++i)
-            thds_.push_back(std::jthread{ [this] { run(); } });    
-    }
+        using Task = std::move_only_function<void()>;
 
-    ThreadPool(const ThreadPool&) = delete;
-    ThreadPool& operator=(const ThreadPool&) = delete;
-
-    ~ThreadPool()
-    {
-        tasks_.close();
-    }
-
-    template <typename F>   
-    auto submit(F&& task) -> std::future<std::invoke_result_t<F>>
-    {
-        using Return_t = decltype(task());
-        using PackagedTask_t = std::packaged_task<Return_t()>;
-
-        PackagedTask_t ptask(std::forward<F>(task));
-        auto future_result = ptask.get_future();
-
-        tasks_.push(std::move(ptask));
-
-        return future_result;
-    }
-
-private:
-    ConcurrentQueue<Task> tasks_;
-    std::vector<std::jthread> thds_;
-
-    void run()
-    {
-        while(true)
+    public:
+        ThreadPool(size_t no_of_threads = 0)
         {
-            std::optional<Task> task = tasks_.pop();
+            if (no_of_threads == 0)
+            {
+                no_of_threads = std::max(1u, std::thread::hardware_concurrency());
+            }
 
-            if (not task.has_value())
-                return;
+            assert(no_of_threads > 0);
 
-            (*task)();
+            for (size_t i = 0; i < no_of_threads; ++i)
+            {
+                threads_.emplace_back([this] { run(); });
+            }
         }
-    }
-};
 
-#endif
+        ThreadPool(const ThreadPool&) = delete;
+        ThreadPool& operator=(const ThreadPool&) = delete;
+
+        ~ThreadPool()
+        {
+            // std::cout << "ThreadPool shutting down\n";
+            tasks_.close();
+            
+            for (auto& thd : threads_)
+            {
+                if (thd.joinable())
+                {
+                    // std::cout << "Joining thread " << thd.get_id() << "\n";
+                    thd.join();
+                }
+            }
+
+            // std::cout << "ThreadPool shutdown complete\n";
+            assert(tasks_.empty());
+        }
+
+        template <typename F>
+        decltype(auto) submit(F&& f)
+        {
+            using ReturnType = std::invoke_result_t<F>;
+            using PackagedTask = std::packaged_task<ReturnType()>;
+
+            PackagedTask ptask(std::forward<F>(f));
+            auto future = ptask.get_future();
+
+            [[maybe_unused]] bool result = tasks_.push(std::move(ptask));
+            assert(result);
+
+            return future;
+        }
+
+        template <typename F>
+        auto run_async(F&& f)
+        {
+            using ReturnType = std::invoke_result_t<F>;
+
+            struct RunAwaitable
+            {
+                F func_;
+                ThreadPool& pool_;
+                std::optional<ReturnType> result_;
+
+                bool await_ready() const noexcept { return false; }
+
+                void await_suspend(std::coroutine_handle<> awaiting_coroutine)
+                {
+                    auto task_wrapper = [this, awaiting_coroutine] () mutable {
+                        result_ = std::invoke(func_);
+                        awaiting_coroutine.resume();
+                    };
+
+                    [[maybe_unused]] bool result = pool_.tasks_.push(std::move(task_wrapper));
+                    assert(result);
+                }
+
+                decltype(auto) await_resume() { return *result_; }
+            };
+
+            return RunAwaitable{std::forward<F>(f), *this};
+        }
+
+    private:
+        ConcurrentQueue<Task> tasks_;
+        std::vector<std::thread> threads_;
+
+        void run()
+        {
+            // std::cout << "Thread " << std::this_thread::get_id() << " started\n";
+
+            while (true)
+            {
+                std::optional<Task> task = tasks_.pop();
+                if (task.has_value())
+                {
+                    // std::cout << "Thread " << std::this_thread::get_id() << " executing task\n";
+                    (*task)();
+                }
+                else
+                {
+                    // std::cout << "Thread " << std::this_thread::get_id() << " received shutdown signal\n";
+                    break;
+                }
+            }
+            // std::cout << "Thread " << std::this_thread::get_id() << " stopping\n";
+        }
+    };
+} // namespace AsyncLab
+
+#endif // THREAD_POOL_HPP
